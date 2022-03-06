@@ -39,18 +39,10 @@
 #include "debug.h"
 #include "util.h"
 
-#ifdef NCURSES
-#include "output/terminal_bcircle.h"
-#include "output/terminal_ncurses.h"
-#include <curses.h>
-#endif
-
-#ifdef SDL
-#include "output/sdl_cava.h"
-#endif
-
 #include "output/raw.h"
 #include "output/terminal_noncurses.h"
+
+#include "display/init.h"
 
 #include "input/alsa.h"
 #include "input/common.h"
@@ -184,16 +176,16 @@ int *monstercat_filter(int *bars, int number_of_bars, int waves, double monsterc
 }
 
 // general: entry point
-int main(int argc, char **argv) {
-
+int main()
+{
 	// general: console title
-	printf("%c]0;%s%c", '\033', PACKAGE, '\007');
+	// printf("%c]0;%s%c", '\033', PACKAGE, '\007');
 
 	// general: handle command-line arguments
 	char configPath[PATH_MAX];
 	configPath[0] = '\0';
 
-	// general: handle Ctrl+C
+	/* general: handle Ctrl+C
 	struct sigaction action;
 	memset(&action, 0, sizeof(action));
 	action.sa_handler = &sig_handler;
@@ -241,11 +233,16 @@ int main(int argc, char **argv) {
 			default: // argument: no arguments; exit
 				abort();
 		}
-	}
+	} */
+
+	// Initialize display
+	struct Display *display = NULL;
+	display = make_display(800, 800, "TURBAVIS");
 
 	// general: main loop
+	// TODO: split and clean up code
 	while (1) {
-
+		// TODO: remove all config stuff
 		debug("loading config\n");
 		// config: load
 		struct error_s error;
@@ -533,6 +530,7 @@ int main(int argc, char **argv) {
 			if (p.xaxis == FREQUENCY && p.bar_width < 4)
 				p.bar_width = 4;
 
+			// TODO: figure out source of screen clear
 			output_mode = OUTPUT_NONCURSES;
 			get_terminal_dim_noncurses(&width, &lines);
 			printf("width %d lines %d\n", width, lines);
@@ -542,81 +540,6 @@ int main(int argc, char **argv) {
 
 			// init_terminal_noncurses(inAtty, p.col, p.bgcol, width, lines, p.bar_width);
 			height = lines * 8;
-
-			/* switch (output_mode) {
-#ifdef NCURSES
-				// output: start ncurses mode
-				case OUTPUT_NCURSES:
-					init_terminal_ncurses(p.color, p.bcolor, p.col, p.bgcol, p.gradient,
-							p.gradient_count, p.gradient_colors, &width, &lines);
-					if (p.xaxis != NONE)
-						lines--;
-					// we have 8 times as much height due to using 1/8 block characters
-					height = lines * 8;
-					break;
-#endif
-#ifdef SDL
-					// output: get sdl window size
-				case OUTPUT_SDL:
-					init_sdl_surface(&width, &height, p.color, p.bcolor);
-					break;
-#endif
-				case OUTPUT_NONCURSES:
-					get_terminal_dim_noncurses(&width, &lines);
-
-					if (p.xaxis != NONE)
-						lines--;
-
-					init_terminal_noncurses(inAtty, p.col, p.bgcol, width, lines, p.bar_width);
-					height = lines * 8;
-					break;
-
-				case OUTPUT_RAW:
-					if (strcmp(p.raw_target, "/dev/stdout") != 0) {
-						int fptest;
-						// checking if file exists
-						if (access(p.raw_target, F_OK) != -1) {
-							// file exists, testopening in case it's a fifo
-							fptest = open(p.raw_target, O_RDONLY | O_NONBLOCK, 0644);
-
-							if (fptest == -1) {
-								fprintf(stderr, "could not open file %s for writing\n", p.raw_target);
-								exit(1);
-							}
-						} else {
-							printf("creating fifo %s\n", p.raw_target);
-							if (mkfifo(p.raw_target, 0664) == -1) {
-								fprintf(stderr, "could not create fifo %s\n", p.raw_target);
-								exit(1);
-							}
-							// fifo needs to be open for reading in order to write to it
-							fptest = open(p.raw_target, O_RDONLY | O_NONBLOCK, 0644);
-						}
-						fp = open(p.raw_target, O_WRONLY | O_NONBLOCK | O_CREAT, 0644);
-					} else {
-						fp = fileno(stdout);
-					}
-					if (fp == -1) {
-						fprintf(stderr, "could not open file %s for writing\n", p.raw_target);
-						exit(1);
-					}
-#ifndef NDEBUG
-					debug("open file %s for writing raw output\n", p.raw_target);
-#endif
-
-					// width must be hardcoded for raw output.
-					width = MAX_BARS;
-
-					if (strcmp(p.data_format, "binary") == 0) {
-						height = pow(2, p.bit_format) - 1;
-					} else {
-						height = p.ascii_range;
-					}
-					break;
-
-				default:
-					exit(EXIT_FAILURE); // Can't happen.
-			} */
 
 			// handle for user setting too many bars
 			if (p.fixedbars) {
@@ -628,7 +551,7 @@ int main(int argc, char **argv) {
 			// getting numbers of bars
 			// int number_of_bars = p.fixedbars;
 			// TODO: replace this fixed
-			int number_of_bars = 50;
+			int number_of_bars = 100;
 
 			// if (p.autobars == 1)
 			//	number_of_bars = (width + p.bar_spacing) / (p.bar_width + p.bar_spacing);
@@ -797,20 +720,6 @@ int main(int argc, char **argv) {
 					center_frequencies[n - 1] =
 						pow((cut_off_frequency[n - 1] * upper_cut_off_frequency[n - 1]), 0.5);
 				}
-
-				/*
-#ifndef NDEBUG
-				initscr();
-				curs_set(0);
-				timeout(0);
-				if (n != 0) {
-					mvprintw(n, 0, "%d: %f -> %f (%d -> %d) bass: %d, treble:%d \n", n,
-							cut_off_frequency[n - 1], cut_off_frequency[n],
-							FFTbuffer_lower_cut_off[n - 1], FFTbuffer_upper_cut_off[n - 1],
-							bass_cut_off_bar, treble_cut_off_bar);
-				}
-#endif */
-
 			}
 
 			if (p.stereo)
@@ -822,11 +731,6 @@ int main(int argc, char **argv) {
 			if (p.xaxis != NONE) {
 				x_axis_info = 1;
 				double center_frequency;
-				/* if (output_mode == OUTPUT_NONCURSES) {
-					printf("\r\033[%dB", lines + 1);
-					if (remainder)
-						printf("\033[%dC", remainder);
-				} */
 
 				for (int n = 0; n < number_of_bars; n++) {
 					if (p.stereo) {
@@ -840,32 +744,7 @@ int main(int argc, char **argv) {
 
 					float freq_kilohz = center_frequency / 1000;
 					int freq_floor = center_frequency;
-
-					/* if (output_mode == OUTPUT_NCURSES) {
-#ifdef NCURSES
-						if (center_frequency < 1000)
-							mvprintw(lines, n * (p.bar_width + p.bar_spacing) + remainder, "%-4d",
-									freq_floor);
-						else if (center_frequency > 1000 && center_frequency < 10000)
-							mvprintw(lines, n * (p.bar_width + p.bar_spacing) + remainder, "%.2f",
-									freq_kilohz);
-						else
-							mvprintw(lines, n * (p.bar_width + p.bar_spacing) + remainder, "%.1f",
-									freq_kilohz);
-#endif
-					} else if (output_mode == OUTPUT_NONCURSES) {
-						if (center_frequency < 1000)
-							printf("%-4d", freq_floor);
-						else if (center_frequency > 1000 && center_frequency < 10000)
-							printf("%.2f", freq_kilohz);
-						else
-							printf("%.1f", freq_kilohz);
-
-						if (n < number_of_bars - 1)
-							printf("\033[%dC", p.bar_width + p.bar_spacing - 4);
-					} */
 				}
-				// printf("\r\033[%dA", lines + 1);
 			}
 
 			bool resizeTerminal = false;
@@ -893,55 +772,6 @@ int main(int argc, char **argv) {
 			int total_frames = 0;
 
 			while (!resizeTerminal) {
-
-				/* general: keyboard controls
-#ifdef NCURSES
-				if (output_mode == OUTPUT_NCURSES)
-					ch = getch();
-#endif
-
-				switch (ch) {
-					case 65: // key up
-						p.sens = p.sens * 1.05;
-						break;
-					case 66: // key down
-						p.sens = p.sens * 0.95;
-						break;
-					case 68: // key right
-						p.bar_width++;
-						resizeTerminal = true;
-						break;
-					case 67: // key left
-						if (p.bar_width > 1)
-							p.bar_width--;
-						resizeTerminal = true;
-						break;
-					case 'r': // reload config
-						should_reload = 1;
-						break;
-					case 'c': // reload colors
-						reload_colors = 1;
-						break;
-					case 'f': // change forground color
-						if (p.col < 7)
-							p.col++;
-						else
-							p.col = 0;
-						resizeTerminal = true;
-						break;
-					case 'b': // change backround color
-						if (p.bgcol < 7)
-							p.bgcol++;
-						else
-							p.bgcol = 0;
-						resizeTerminal = true;
-						break;
-
-					case 'q':
-						should_reload = 1;
-						should_quit = 1;
-				} */
-
 				if (should_reload) {
 
 					reloadConf = true;
@@ -1181,34 +1011,6 @@ int main(int argc, char **argv) {
 
 				// output: draw processed input
 				int rc;
-				
-				/*switch (output_mode) {
-					case OUTPUT_NCURSES:
-#ifdef NCURSES
-						rc = draw_terminal_ncurses(inAtty, lines, width, number_of_bars, p.bar_width,
-								p.bar_spacing, remainder, bars, previous_frame,
-								p.gradient, x_axis_info);
-						break;
-#endif
-#ifdef SDL
-					case OUTPUT_SDL:
-						rc = draw_sdl(number_of_bars, p.bar_width, p.bar_spacing, remainder, height,
-								bars, previous_frame, frame_time_msec);
-						break;
-#endif
-					case OUTPUT_NONCURSES:
-						rc = draw_terminal_noncurses(inAtty, lines, width, number_of_bars, p.bar_width,
-								p.bar_spacing, remainder, bars, previous_frame,
-								x_axis_info);
-						break;
-					case OUTPUT_RAW:
-						rc = print_raw_out(number_of_bars, fp, p.is_bin, p.bit_format, p.ascii_range,
-								p.bar_delim, p.frame_delim, bars);
-						break;
-
-					default:
-						exit(EXIT_FAILURE); // Can't happen.
-				} */
 
 				// terminal has been resized breaking to recalibrating values
 				if (rc == -1)
@@ -1248,19 +1050,13 @@ int main(int argc, char **argv) {
 					}
 				}
 
-				// Open file to write
-				FILE *fp = fopen("bars.log", "w");
-				if (fp == NULL) {
-					fprintf(stderr, "Error opening file!\n");
-					exit(EXIT_FAILURE);
-				}
+				// Copy to display bars
+				display->num_bars = number_of_bars;
+				for (int n = 0; n < number_of_bars; n++)
+					display->bars[n + 1].value = ((float) bars[n])/height;
 
-				fprintf(fp, "Bars: %d\n", number_of_bars);
-				for (int n = 0; n < number_of_bars; n++) {
-					fprintf(fp, "%d\n", bars[n]);
-				}
-
-				fclose(fp);
+				// Render to the display
+				render(display);
 			} // resize terminal
 
 		} // reloading config

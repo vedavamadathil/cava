@@ -151,7 +151,7 @@ void get_terminal_dim_noncurses(int *width, int *lines) {
     *lines = (int)dim.ws_row;
     *width = (int)dim.ws_col;
 
-    system("clear"); // clearing in case of resieze
+    // system("clear"); // clearing in case of resieze
 }
 
 int draw_terminal_noncurses(int tty, int lines, int width, int number_of_bars, int bar_width,
