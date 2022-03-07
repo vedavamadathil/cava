@@ -24,19 +24,31 @@ layout (std140, binding = 2) buffer Particles_F2
 	vec4	particles_f2[MAX_PARTICLES];
 };
 
-// TODO: later accept color gradients
-// TODO: later pass screen size
-
-layout (std140, binding = 3) buffer Self
-{
-	int buf;
-};
-
 // Output is color
 layout (location = 0) out vec4 fragment;
 
 // PI constant
 const float PI = 3.1415926535897932384626433832795;
+
+// TODO: uniform values
+int win_width = 800;
+int win_height = 800;
+
+// Get data at 2D index
+vec4 get_data(int x, int y)
+{
+	// Check bounds
+	if (x < 0 || x >= win_width || y < 0 || y >= win_height)
+		return vec4(0.0, 0.0, 0.0, 0.0);
+
+	// Get index
+	int index = x + y * win_width;
+
+	// Return data
+	if (bars[0].y > 0.5)
+		return particles_f2[index];
+	return particles_f1[index];
+}
 
 void main()
 {
@@ -62,47 +74,65 @@ void main()
 	int i = int(theta / (2 * PI) * num_bars);
 
 	// Get the distance from the point to the bar
-	float d = 0.3 + bars[i + 1].x;
+	float value = bars[i + 1].x/2;
+	float d = 0.3 + value;
 	if (length(point) < d) {
 		// Set the color
-		fragment = vec4(1.0, 0.0, 0.0, radius);
+		fragment = vec4(0.6, 1.0, 0.6, radius);
 	} else {
-		int width = 800;
-		int height = 800;
-
-		// Switch to the next buffer
-		if (buf % 2 == 0)
-			buf = 1;
-		else
-			buf = 0;
+		// Get buf index
+		float buf = bars[0].y;
 
 		// Normalize coordinates
-		int npx = int((point.x + 1)/2);
-		int npy = int((point.y + 1)/2);
+		float npx = (point.x + 1)/2;
+		float npy = (point.y + 1)/2;
 
 		// Get index of particle
-		int pi = npy * width + npx;
+		int x = int(npx * win_width);
+		int y = int(npy * win_height);
+		int pi = x + y * win_width;
 
-		// Data
-		vec4 data = particles_f1[pi];
-		if (buf == 1)
-			data = particles_f2[pi];
-		
+		vec4 data = get_data(x, y);
+
 		// Velocity
 		vec2 v = data.xy;
+		vec2 dir = normalize(point);
 
-		// Apply force
-		vec2 f = (bars[i + 1].x - data.z) * normalize(point);
-		v += f * 0.001;
+		// Calculate and apply bar force
+		float f = (value - data.z)/radius;
+		if (f > 0.0)
+			v += f * dir;
+
+		////////////////////////////////////////
+		// Calculate and apply pressure force //
+		////////////////////////////////////////
+
+		// Get data from neighbor particles
+		vec4 n1 = get_data(x - 1, y);
+		vec4 n2 = get_data(x + 1, y);
+		vec4 n3 = get_data(x, y - 1);
+		vec4 n4 = get_data(x, y + 1);
+
+		// Calculate pressure force
+		vec2 p = vec2(0.0, 0.0);
+		p += (n1.z - data.z) * normalize(vec2(n1.x, n1.y) - point);
+		p += (n2.z - data.z) * normalize(vec2(n2.x, n2.y) - point);
+		p += (n3.z - data.z) * normalize(vec2(n3.x, n3.y) - point);
+		p += (n4.z - data.z) * normalize(vec2(n4.x, n4.y) - point);
+
+		// Apply pressure force
+		v += p;
 
 		// Color by velocity
-		float s = length(v);
-
-		fragment = vec4(s, s, s, radius);
+		float s = clamp(length(v), 0.0, 1.0);
+		vec3 c1 = vec3(0.596, 0, 0.851);
+		vec3 c2 = vec3(0.665, 0.66, 0.878);
+		vec3 c = mix(c1, c2, s);
+		fragment = vec4(c, 1.0);
 
 		// Update particle
-		data = vec4(v, bars[i + 1].x, 0);
-		if (buf == 0)
+		data = vec4(v, value, 0);
+		if (buf > 0.5)
 			particles_f1[pi] = data;
 		else
 			particles_f2[pi] = data;

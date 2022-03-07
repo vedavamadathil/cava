@@ -65,6 +65,7 @@ struct Display {
 	struct Buffer		bars_ubo;
 	struct Buffer		particles_ubo_f1;
 	struct Buffer		particles_ubo_f2;
+	struct Buffer		self;
 
 	// Bars
 	int32_t			num_bars;

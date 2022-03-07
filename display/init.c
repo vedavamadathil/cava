@@ -273,6 +273,8 @@ struct Display *make_display(int width, int height, const char *title)
 // Render a frame
 void render(struct Display *display)
 {
+	static int buf = 0;
+
 	// Clear the color buffer
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -289,7 +291,10 @@ void render(struct Display *display)
 	// TODO: another function
 	glBindBuffer(GL_UNIFORM_BUFFER, display->bars_ubo.buffer);
 
+	buf = (buf + 1) % 2;
 	display->bars[0].value = display->num_bars;
+	display->bars[0].x1 = buf;
+
 	glBufferSubData(GL_UNIFORM_BUFFER, 0,
 		sizeof(struct afloat) * (display->num_bars + 1),
 		display->bars
